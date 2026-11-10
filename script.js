@@ -33,6 +33,7 @@ let wrapList = [];
 let wrapListDom = document.getElementById("wrapList");
 let audioContext = null; // Web Audio API のコンテキスト
 const bellBuffers = {}; // デコード済みのベル音源
+const bellElements = {}; // 再生許可済みの audio 要素
 
 const getValue = (rawValue, defaultValue) => {
   const number = parseInt(rawValue);
@@ -117,7 +118,13 @@ const loadBells = () => {
   for (const name of ["1", "2", "3"]) {
     fetch(`./sounds/bell${name}.mp3`)
       .then((response) => response.arrayBuffer())
-      .then((data) => audioContext.decodeAudioData(data))
+      .then(
+        (data) =>
+          new Promise((resolve, reject) => {
+            // 古い iOS ではコールバック形式でないと動かないため，こちらを使う
+            audioContext.decodeAudioData(data, resolve, reject);
+          })
+      )
       .then((buffer) => {
         bellBuffers[name] = buffer;
       })
@@ -128,6 +135,24 @@ const loadBells = () => {
 // iPad / iPhone では，ユーザー操作の中で AudioContext を有効化しておかないと
 // 時間経過後（タイマー内）の自動再生がブロックされるため，開始ボタンなどで呼び出す
 const unlockAudio = () => {
+  // Web Audio が使えない場合に備え，audio 要素もユーザー操作の中で再生許可を得ておく
+  for (const name of ["1", "2", "3"]) {
+    if (!bellElements[name]) {
+      bellElements[name] = new Audio(`./sounds/bell${name}.mp3`);
+    }
+    const element = bellElements[name];
+    element.muted = true;
+    element
+      .play()
+      .then(() => {
+        element.pause();
+        element.currentTime = 0;
+        element.muted = false;
+      })
+      .catch(() => {
+        element.muted = false;
+      });
+  }
   // iOS の消音スイッチ（消音モード）でも鳴るように再生カテゴリを指定する
   if (navigator.audioSession) {
     navigator.audioSession.type = "playback";
@@ -160,8 +185,8 @@ const playBell = (name) => {
     return;
   }
   // Web Audio API が使えない場合のフォールバック
-  const bell = new Audio();
-  bell.src = `./sounds/bell${name}.mp3`;
+  const bell = bellElements[name] || new Audio(`./sounds/bell${name}.mp3`);
+  bell.currentTime = 0;
   bell.play().catch(() => {});
 };
 
