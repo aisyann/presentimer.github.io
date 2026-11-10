@@ -372,9 +372,10 @@ window.addEventListener("load", () => {
   setupUI();
   if (new URLSearchParams(window.location.search).get("debug") === "1") {
     debugDom = document.createElement("pre");
-    debugDom.style.cssText = "color:#fff;font-size:14px;padding:8px;white-space:pre-wrap;";
+    debugDom.style.cssText =
+      "position:fixed;top:0;left:0;right:0;z-index:100;margin:0;text-align:left;color:#fff;background:rgba(0,0,0,0.8);font-size:14px;padding:8px;white-space:pre-wrap;";
     document.body.appendChild(debugDom);
-    logDebug(`UA: ${navigator.userAgent}`);
+    logDebug(`デバッグ表示 開始 / UA: ${navigator.userAgent}`);
   }
   startBtn.addEventListener("click", startTimer, false);
   stopBtn.addEventListener("click", stopTimer, false);
