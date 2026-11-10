@@ -34,6 +34,14 @@ let wrapListDom = document.getElementById("wrapList");
 let audioContext = null; // Web Audio API のコンテキスト
 const bellBuffers = {}; // デコード済みのベル音源
 const bellElements = {}; // 再生許可済みの audio 要素
+let debugDom = null; // 原因調査用の表示欄（URL に debug=1 を付けたときだけ使う）
+
+const logDebug = (message) => {
+  if (!debugDom) return;
+  const time = new Date().toLocaleTimeString();
+  debugDom.textContent += `${time} ${message}
+`;
+};
 
 const getValue = (rawValue, defaultValue) => {
   const number = parseInt(rawValue);
@@ -127,8 +135,11 @@ const loadBells = () => {
       )
       .then((buffer) => {
         bellBuffers[name] = buffer;
+        logDebug(`bell${name} デコード成功`);
       })
-      .catch(() => {});
+      .catch((error) => {
+        logDebug(`bell${name} 読み込み失敗: ${error}`);
+      });
   }
 };
 
@@ -163,8 +174,11 @@ const unlockAudio = () => {
     audioContext = new AudioContextClass();
     loadBells();
   }
+  logDebug(`unlock: state=${audioContext.state}`);
   if (audioContext.state !== "running") {
-    audioContext.resume().catch(() => {});
+    audioContext.resume().catch((error) => {
+      logDebug(`resume 失敗: ${error}`);
+    });
   }
   // 無音を一瞬再生して iOS のロックを解除する
   const source = audioContext.createBufferSource();
@@ -174,6 +188,9 @@ const unlockAudio = () => {
 };
 
 const playBell = (name) => {
+  logDebug(
+    `playBell ${name}: state=${audioContext ? audioContext.state : "なし"}, buffer=${Boolean(bellBuffers[name])}`
+  );
   if (audioContext && bellBuffers[name]) {
     if (audioContext.state !== "running") {
       audioContext.resume().catch(() => {});
@@ -187,7 +204,9 @@ const playBell = (name) => {
   // Web Audio API が使えない場合のフォールバック
   const bell = bellElements[name] || new Audio(`./sounds/bell${name}.mp3`);
   bell.currentTime = 0;
-  bell.play().catch(() => {});
+  bell.play().catch((error) => {
+    logDebug(`audio 再生失敗: ${error}`);
+  });
 };
 
 // seconds タイマー開始からの経過時間の取得
@@ -351,6 +370,12 @@ const updateLimit = () => {
 window.addEventListener("load", () => {
   setupValues();
   setupUI();
+  if (new URLSearchParams(window.location.search).get("debug") === "1") {
+    debugDom = document.createElement("pre");
+    debugDom.style.cssText = "color:#fff;font-size:14px;padding:8px;white-space:pre-wrap;";
+    document.body.appendChild(debugDom);
+    logDebug(`UA: ${navigator.userAgent}`);
+  }
   startBtn.addEventListener("click", startTimer, false);
   stopBtn.addEventListener("click", stopTimer, false);
   resetBtn.addEventListener("click", resetTimer, false);
