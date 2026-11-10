@@ -104,7 +104,7 @@ const setupUI = () => {
 const setupTimer = () => {
   passTime = 0;
   passBackup = 0;
-  wrapTime = 0;
+  wrapBackup = 0; // リセット後のラップが負にならないようにする
   timerPar.style.color = "white";
   minutesLbl.innerText = limitTime;
   secondsLbl.innerText = zeroPadding(0);
@@ -128,6 +128,10 @@ const loadBells = () => {
 // iPad / iPhone では，ユーザー操作の中で AudioContext を有効化しておかないと
 // 時間経過後（タイマー内）の自動再生がブロックされるため，開始ボタンなどで呼び出す
 const unlockAudio = () => {
+  // iOS の消音スイッチ（消音モード）でも鳴るように再生カテゴリを指定する
+  if (navigator.audioSession) {
+    navigator.audioSession.type = "playback";
+  }
   if (!audioContext) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
