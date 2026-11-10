@@ -31,6 +31,8 @@ let passBackup = 0; // seconds 経過時間用のバックアップ
 let wrapBackup = 0; // seconds ラップ用のバックアップ
 let wrapList = [];
 let wrapListDom = document.getElementById("wrapList");
+let audioContext = null; // Web Audio API のコンテキスト
+const bellBuffers = {}; // デコード済みのベル音源
 
 const getValue = (rawValue, defaultValue) => {
   const number = parseInt(rawValue);
@@ -110,11 +112,53 @@ const setupTimer = () => {
   elapsedSecondsLbl.innerText = zeroPadding(0);
 };
 
-const callSilentBell = () => {
+// ベル音源の読み込み（Web Audio API 用）
+const loadBells = () => {
+  for (const name of ["1", "2", "3"]) {
+    fetch(`./sounds/bell${name}.mp3`)
+      .then((response) => response.arrayBuffer())
+      .then((data) => audioContext.decodeAudioData(data))
+      .then((buffer) => {
+        bellBuffers[name] = buffer;
+      })
+      .catch(() => {});
+  }
+};
+
+// iPad / iPhone では，ユーザー操作の中で AudioContext を有効化しておかないと
+// 時間経過後（タイマー内）の自動再生がブロックされるため，開始ボタンなどで呼び出す
+const unlockAudio = () => {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    audioContext = new AudioContextClass();
+    loadBells();
+  }
+  if (audioContext.state !== "running") {
+    audioContext.resume().catch(() => {});
+  }
+  // 無音を一瞬再生して iOS のロックを解除する
+  const source = audioContext.createBufferSource();
+  source.buffer = audioContext.createBuffer(1, 1, 22050);
+  source.connect(audioContext.destination);
+  source.start(0);
+};
+
+const playBell = (name) => {
+  if (audioContext && bellBuffers[name]) {
+    if (audioContext.state !== "running") {
+      audioContext.resume().catch(() => {});
+    }
+    const source = audioContext.createBufferSource();
+    source.buffer = bellBuffers[name];
+    source.connect(audioContext.destination);
+    source.start(0);
+    return;
+  }
+  // Web Audio API が使えない場合のフォールバック
   const bell = new Audio();
-  bell.src = "sounds/bell1.mp3";
-  bell.volume = 0.0;
-  bell.play();
+  bell.src = `./sounds/bell${name}.mp3`;
+  bell.play().catch(() => {});
 };
 
 // seconds タイマー開始からの経過時間の取得
@@ -127,12 +171,12 @@ const getPassTime = () => {
 const countDown = () => {
   const _passTime = getPassTime();
 
-  if (_passTime != passTime) {
+  if (_passTime !== passTime) {
+    // 画面スリープなどでタイマーが間引かれても鳴らせるよう，通過したかどうかで判定する
     for (let i = 2; i >= 0; i--) {
-      if (minutes[i] > 0 && _passTime == minutes[i] * 60) {
-        const bellSound = new Audio();
-        bellSound.src = "./sounds/bell" + minPassArray[i].name + ".mp3";
-        bellSound.play();
+      const bellTime = minutes[i] * 60;
+      if (minutes[i] > 0 && passTime < bellTime && bellTime <= _passTime) {
+        playBell(minPassArray[i].name);
         break;
       }
     }
@@ -158,7 +202,7 @@ const startTimer = () => {
     minPassArray[i].disabled = true;
     minRestArray[i].disabled = true;
   }
-  callSilentBell();
+  unlockAudio();
   startTime = new Date().getTime();
   timer = setInterval(countDown, 100);
 };
@@ -192,9 +236,8 @@ const resetTimer = () => {
 };
 
 const callBell = () => {
-  const bell = new Audio();
-  bell.src = "sounds/bell1.mp3";
-  bell.play();
+  unlockAudio();
+  playBell("1");
 };
 
 const addWrap = () => {
@@ -291,4 +334,14 @@ window.addEventListener("load", () => {
     minRest.addEventListener("input", updateRest, false);
   }
   limitField.addEventListener("input", updateLimit, false);
+  // 画面スリープやアプリ切り替えから戻ったときに音声を復帰させる
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (!document.hidden && audioContext && audioContext.state !== "running") {
+        audioContext.resume().catch(() => {});
+      }
+    },
+    false
+  );
 });
